@@ -24,8 +24,8 @@
             <div class="card-body">
                 <h5 class="card-title">Registered Sensors</h5>
                 <h2>@sensors.Count</h2>
-                <p class="card-text text-muted">
-                    Devices currently registered with the gateway.
+                <p class="text-muted mb-0">
+                    Devices registered with the gateway.
                 </p>
             </div>
         </div>
@@ -36,8 +36,8 @@
             <div class="card-body">
                 <h5 class="card-title">Online Sensors</h5>
                 <h2>@OnlineSensorCount</h2>
-                <p class="card-text text-muted">
-                    Sensors currently reporting as online.
+                <p class="text-muted mb-0">
+                    Sensors currently online.
                 </p>
             </div>
         </div>
@@ -48,8 +48,8 @@
             <div class="card-body">
                 <h5 class="card-title">Disconnected Sensors</h5>
                 <h2>@DisconnectedSensorCount</h2>
-                <p class="card-text text-muted">
-                    Sensors that are currently offline.
+                <p class="text-muted mb-0">
+                    Sensors currently offline.
                 </p>
             </div>
         </div>
@@ -62,7 +62,9 @@
     <div class="col-lg-4">
         <div class="card border-primary h-100">
             <div class="card-body">
-                <h5 class="card-title">Sensor Data Ingestion and Telemetry</h5>
+                <h5 class="card-title">
+                    Sensor Data Ingestion and Telemetry
+                </h5>
 
                 <p class="card-text">
                     Register IoT devices and manage incoming sensor data.
@@ -78,7 +80,9 @@
     <div class="col-lg-4">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Real-Time Command Stream and History</h5>
+                <h5 class="card-title">
+                    Real-Time Command Stream and History
+                </h5>
 
                 <p class="card-text">
                     Device command processing and command history.
@@ -94,7 +98,9 @@
     <div class="col-lg-4">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Network Topology and Mesh Routing</h5>
+                <h5 class="card-title">
+                    Network Topology and Mesh Routing
+                </h5>
 
                 <p class="card-text">
                     Visualise gateway nodes, deployment zones and mesh routes.
@@ -107,6 +113,100 @@
         </div>
     </div>
 </div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">Live Telemetry</h3>
+
+    <button class="btn btn-success"
+            @onclick="SimulateTelemetry"
+            disabled="@isSimulating">
+        @(isSimulating ? "Processing..." : "Simulate Telemetry")
+    </button>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Latest Temperature</h6>
+                <h3>@telemetrySummary.LatestTemperatureC.ToString("0.0") °C</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Power Load</h6>
+                <h3>@telemetrySummary.AggregatePowerKw.ToString("0.00") kW</h3>
+                <small class="text-muted">
+                    Highest: @telemetrySummary.HigherPowerSource
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Total Packets</h6>
+                <h3>@telemetrySummary.TotalPackets</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6>Detected Anomalies</h6>
+                <h3>@telemetrySummary.AnomalyCount</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (telemetryRecords.Count > 0)
+{
+    <div class="table-responsive mb-4">
+        <table class="table table-striped table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Sensor</th>
+                    <th>Metric</th>
+                    <th>Value</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var record in telemetryRecords)
+                {
+                    <tr>
+                        <td>@record.DeviceName</td>
+                        <td>@record.Metric</td>
+                        <td>@record.Value @record.Unit</td>
+                        <td>@record.Timestamp.ToLocalTime().ToString("HH:mm:ss")</td>
+                        <td>
+                            @if (record.IsAnomaly)
+                            {
+                                <span class="badge bg-danger">
+                                    Anomaly
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">
+                                    Normal
+                                </span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
 
 <h3 class="mb-3">Current Sensors</h3>
 
@@ -149,7 +249,9 @@ else
                             }
                             else
                             {
-                                <span class="badge bg-danger">Disconnected</span>
+                                <span class="badge bg-danger">
+                                    Disconnected
+                                </span>
                             }
                         </td>
                     </tr>
@@ -161,7 +263,13 @@ else
 
 @code {
     private List<Sensor> sensors = new();
+    private List<TelemetryRecord> telemetryRecords = new();
+
+    private TelemetrySummary telemetrySummary = new();
+
     private bool isLoading = true;
+    private bool isSimulating;
+
     private string errorMessage = string.Empty;
 
     private int OnlineSensorCount =>
@@ -172,14 +280,45 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadDashboard();
+    }
+
+    private async Task LoadDashboard()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
         try
         {
-            sensors = await Http.GetFromJsonAsync<List<Sensor>>("api/sensors")
-                      ?? new List<Sensor>();
+            var sensorTask =
+                Http.GetFromJsonAsync<List<Sensor>>("api/sensors");
+
+            var summaryTask =
+                Http.GetFromJsonAsync<TelemetrySummary>(
+                    "api/telemetry/summary");
+
+            var telemetryTask =
+                Http.GetFromJsonAsync<List<TelemetryRecord>>(
+                    "api/telemetry/recent");
+
+            await Task.WhenAll(
+                sensorTask,
+                summaryTask,
+                telemetryTask);
+
+            sensors =
+                await sensorTask ?? new List<Sensor>();
+
+            telemetrySummary =
+                await summaryTask ?? new TelemetrySummary();
+
+            telemetryRecords =
+                await telemetryTask ?? new List<TelemetryRecord>();
         }
         catch
         {
-            errorMessage = "The dashboard could not connect to the Smart-X API.";
+            errorMessage =
+                "The dashboard could not connect to the Smart-X API.";
         }
         finally
         {
@@ -187,11 +326,40 @@ else
         }
     }
 
+    private async Task SimulateTelemetry()
+    {
+        isSimulating = true;
+
+        try
+        {
+            var response =
+                await Http.PostAsync(
+                    "api/telemetry/simulate",
+                    null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadDashboard();
+            }
+        }
+        catch
+        {
+            errorMessage =
+                "Telemetry simulation could not be completed.";
+        }
+        finally
+        {
+            isSimulating = false;
+        }
+    }
+
     private string FormatCategory(SensorCategory category)
     {
         return category switch
         {
-            SensorCategory.PowerConsumption => "Power Consumption",
+            SensorCategory.PowerConsumption =>
+                "Power Consumption",
+
             _ => category.ToString()
         };
     }
