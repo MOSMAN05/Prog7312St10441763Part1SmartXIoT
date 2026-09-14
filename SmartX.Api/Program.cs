@@ -4,8 +4,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddDataProtection();
 
 builder.Services.AddSingleton<TelemetryService>();
+builder.Services.AddSingleton<DeploymentService>();
+builder.Services.AddSingleton<AttachmentService>();
 
 builder.Services.AddCors(options =>
 {

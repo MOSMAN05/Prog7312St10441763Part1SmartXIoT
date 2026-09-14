@@ -18,11 +18,39 @@
     </div>
 }
 
+@if (DisconnectedSensorCount > 0 || telemetrySummary.AnomalyCount > 0)
+{
+    <div class="alert alert-danger">
+        <h5>System Attention Required</h5>
+
+        @if (DisconnectedSensorCount > 0)
+        {
+            <div>
+                @DisconnectedSensorCount sensor(s) are currently disconnected.
+            </div>
+        }
+
+        @if (telemetrySummary.AnomalyCount > 0)
+        {
+            <div>
+                @telemetrySummary.AnomalyCount anomalous telemetry reading(s)
+                have been detected.
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="alert alert-success">
+        All monitored sensor activity is currently normal.
+    </div>
+}
+
 <div class="row g-3 mb-4">
     <div class="col-md-4">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="card-title">Registered Sensors</h5>
+                <h5>Registered Sensors</h5>
                 <h2>@sensors.Count</h2>
                 <p class="text-muted mb-0">
                     Devices registered with the gateway.
@@ -34,10 +62,10 @@
     <div class="col-md-4">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="card-title">Online Sensors</h5>
+                <h5>Online Sensors</h5>
                 <h2>@OnlineSensorCount</h2>
                 <p class="text-muted mb-0">
-                    Sensors currently online.
+                    Sensors currently reporting as online.
                 </p>
             </div>
         </div>
@@ -46,10 +74,10 @@
     <div class="col-md-4">
         <div class="card shadow-sm h-100">
             <div class="card-body">
-                <h5 class="card-title">Disconnected Sensors</h5>
+                <h5>Disconnected Sensors</h5>
                 <h2>@DisconnectedSensorCount</h2>
                 <p class="text-muted mb-0">
-                    Sensors currently offline.
+                    Sensors requiring connection checks.
                 </p>
             </div>
         </div>
@@ -62,15 +90,16 @@
     <div class="col-lg-4">
         <div class="card border-primary h-100">
             <div class="card-body">
-                <h5 class="card-title">
+                <h5>
                     Sensor Data Ingestion and Telemetry
                 </h5>
 
-                <p class="card-text">
-                    Register IoT devices and manage incoming sensor data.
+                <p>
+                    Register devices and monitor incoming IoT sensor data.
                 </p>
 
-                <a class="btn btn-primary" href="sensors/register">
+                <a class="btn btn-primary"
+                   href="sensors/register">
                     Open Module
                 </a>
             </div>
@@ -80,15 +109,16 @@
     <div class="col-lg-4">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">
+                <h5>
                     Real-Time Command Stream and History
                 </h5>
 
-                <p class="card-text">
+                <p>
                     Device command processing and command history.
                 </p>
 
-                <button class="btn btn-secondary" disabled>
+                <button class="btn btn-secondary"
+                        disabled>
                     Part 2
                 </button>
             </div>
@@ -98,20 +128,33 @@
     <div class="col-lg-4">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">
+                <h5>
                     Network Topology and Mesh Routing
                 </h5>
 
-                <p class="card-text">
-                    Visualise gateway nodes, deployment zones and mesh routes.
+                <p>
+                    Visualise deployment zones and future mesh routes.
                 </p>
 
-                <button class="btn btn-secondary" disabled>
+                <button class="btn btn-secondary"
+                        disabled>
                     Final PoE
                 </button>
             </div>
         </div>
     </div>
+</div>
+
+<div class="d-flex gap-2 mb-4">
+    <a class="btn btn-outline-primary"
+       href="deployment">
+        Validate Deployment
+    </a>
+
+    <a class="btn btn-outline-primary"
+       href="sensor-files">
+        Manage Sensor Files
+    </a>
 </div>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -129,7 +172,9 @@
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <h6>Latest Temperature</h6>
-                <h3>@telemetrySummary.LatestTemperatureC.ToString("0.0") °C</h3>
+                <h3>
+                    @telemetrySummary.LatestTemperatureC.ToString("0.0") °C
+                </h3>
             </div>
         </div>
     </div>
@@ -138,7 +183,10 @@
         <div class="card shadow-sm h-100">
             <div class="card-body">
                 <h6>Power Load</h6>
-                <h3>@telemetrySummary.AggregatePowerKw.ToString("0.00") kW</h3>
+                <h3>
+                    @telemetrySummary.AggregatePowerKw.ToString("0.00") kW
+                </h3>
+
                 <small class="text-muted">
                     Highest: @telemetrySummary.HigherPowerSource
                 </small>
@@ -186,7 +234,11 @@
                         <td>@record.DeviceName</td>
                         <td>@record.Metric</td>
                         <td>@record.Value @record.Unit</td>
-                        <td>@record.Timestamp.ToLocalTime().ToString("HH:mm:ss")</td>
+                        <td>
+                            @record.Timestamp.ToLocalTime()
+                            .ToString("HH:mm:ss")
+                        </td>
+
                         <td>
                             @if (record.IsAnomaly)
                             {
@@ -242,10 +294,13 @@ else
                         <td>@sensor.MacAddress</td>
                         <td>@sensor.DeploymentLocation</td>
                         <td>@FormatCategory(sensor.Category)</td>
+
                         <td>
                             @if (sensor.IsOnline)
                             {
-                                <span class="badge bg-success">Online</span>
+                                <span class="badge bg-success">
+                                    Online
+                                </span>
                             }
                             else
                             {
@@ -291,7 +346,8 @@ else
         try
         {
             var sensorTask =
-                Http.GetFromJsonAsync<List<Sensor>>("api/sensors");
+                Http.GetFromJsonAsync<List<Sensor>>(
+                    "api/sensors");
 
             var summaryTask =
                 Http.GetFromJsonAsync<TelemetrySummary>(
@@ -329,6 +385,7 @@ else
     private async Task SimulateTelemetry()
     {
         isSimulating = true;
+        errorMessage = string.Empty;
 
         try
         {
@@ -353,7 +410,8 @@ else
         }
     }
 
-    private string FormatCategory(SensorCategory category)
+    private string FormatCategory(
+        SensorCategory category)
     {
         return category switch
         {

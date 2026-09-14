@@ -1,34 +1,65 @@
 ﻿<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">Smart-X IoT</a>
-        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+
+        <button title="Navigation menu"
+                class="navbar-toggler"
+                @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
     </div>
 </div>
 
-<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
+<div class="@NavMenuCssClass nav-scrollable"
+     @onclick="ToggleNavMenu">
+
     <nav class="nav flex-column">
+
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span>
+            <NavLink class="nav-link"
+                     href=""
+                     Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill-nav-menu"
+                      aria-hidden="true"></span>
                 Dashboard
             </NavLink>
         </div>
 
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="sensors/register">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span>
+            <NavLink class="nav-link"
+                     href="sensors/register">
+                <span class="bi bi-plus-square-fill-nav-menu"
+                      aria-hidden="true"></span>
                 Register Sensor
             </NavLink>
         </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link"
+                     href="deployment">
+                <span class="bi bi-diagram-3-fill-nav-menu"
+                      aria-hidden="true"></span>
+                Deployment Validation
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link"
+                     href="sensor-files">
+                <span class="bi bi-file-earmark-fill-nav-menu"
+                      aria-hidden="true"></span>
+                Sensor Files
+            </NavLink>
+        </div>
+
     </nav>
 </div>
 
 @code {
     private bool collapseNavMenu = true;
 
-    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+    private string? NavMenuCssClass =>
+        collapseNavMenu ? "collapse" : null;
 
     private void ToggleNavMenu()
     {
