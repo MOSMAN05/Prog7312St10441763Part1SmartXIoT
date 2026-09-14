@@ -5,11 +5,20 @@
 
 <PageTitle>Smart-X Dashboard</PageTitle>
 
-<h1>Smart-X IoT Gateway</h1>
+<div class="dashboard-header">
+    <div>
+        <h1>Smart-X IoT Gateway</h1>
+        <p class="text-muted mb-0">
+            Monitor sensor registrations, telemetry ingestion and gateway activity.
+        </p>
+    </div>
 
-<p class="text-muted">
-    Monitor sensor registrations, telemetry ingestion and gateway activity.
-</p>
+    <button class="btn btn-outline-primary"
+            @onclick="LoadDashboard"
+            disabled="@isLoading">
+        @(isLoading ? "Refreshing..." : "Refresh Dashboard")
+    </button>
+</div>
 
 @if (!string.IsNullOrWhiteSpace(errorMessage))
 {
@@ -20,7 +29,7 @@
 
 @if (DisconnectedSensorCount > 0 || telemetrySummary.AnomalyCount > 0)
 {
-    <div class="alert alert-danger">
+    <div class="alert alert-danger system-alert">
         <h5>System Attention Required</h5>
 
         @if (DisconnectedSensorCount > 0)
@@ -48,11 +57,11 @@ else
 
 <div class="row g-3 mb-4">
     <div class="col-md-4">
-        <div class="card shadow-sm h-100">
+        <div class="card dashboard-card h-100">
             <div class="card-body">
-                <h5>Registered Sensors</h5>
+                <h6 class="text-muted">Registered Sensors</h6>
                 <h2>@sensors.Count</h2>
-                <p class="text-muted mb-0">
+                <p class="mb-0">
                     Devices registered with the gateway.
                 </p>
             </div>
@@ -60,11 +69,11 @@ else
     </div>
 
     <div class="col-md-4">
-        <div class="card shadow-sm h-100">
+        <div class="card dashboard-card h-100">
             <div class="card-body">
-                <h5>Online Sensors</h5>
-                <h2>@OnlineSensorCount</h2>
-                <p class="text-muted mb-0">
+                <h6 class="text-muted">Online Sensors</h6>
+                <h2 class="text-success">@OnlineSensorCount</h2>
+                <p class="mb-0">
                     Sensors currently reporting as online.
                 </p>
             </div>
@@ -72,11 +81,11 @@ else
     </div>
 
     <div class="col-md-4">
-        <div class="card shadow-sm h-100">
+        <div class="card dashboard-card h-100">
             <div class="card-body">
-                <h5>Disconnected Sensors</h5>
-                <h2>@DisconnectedSensorCount</h2>
-                <p class="text-muted mb-0">
+                <h6 class="text-muted">Disconnected Sensors</h6>
+                <h2 class="text-danger">@DisconnectedSensorCount</h2>
+                <p class="mb-0">
                     Sensors requiring connection checks.
                 </p>
             </div>
@@ -84,15 +93,13 @@ else
     </div>
 </div>
 
-<h3 class="mb-3">Gateway Modules</h3>
+<h3 class="section-title">Gateway Modules</h3>
 
 <div class="row g-3 mb-4">
     <div class="col-lg-4">
-        <div class="card border-primary h-100">
+        <div class="card module-card active-module h-100">
             <div class="card-body">
-                <h5>
-                    Sensor Data Ingestion and Telemetry
-                </h5>
+                <h5>Sensor Data Ingestion and Telemetry</h5>
 
                 <p>
                     Register devices and monitor incoming IoT sensor data.
@@ -107,11 +114,9 @@ else
     </div>
 
     <div class="col-lg-4">
-        <div class="card h-100">
+        <div class="card module-card h-100">
             <div class="card-body">
-                <h5>
-                    Real-Time Command Stream and History
-                </h5>
+                <h5>Real-Time Command Stream and History</h5>
 
                 <p>
                     Device command processing and command history.
@@ -126,11 +131,9 @@ else
     </div>
 
     <div class="col-lg-4">
-        <div class="card h-100">
+        <div class="card module-card h-100">
             <div class="card-body">
-                <h5>
-                    Network Topology and Mesh Routing
-                </h5>
+                <h5>Network Topology and Mesh Routing</h5>
 
                 <p>
                     Visualise deployment zones and future mesh routes.
@@ -145,7 +148,7 @@ else
     </div>
 </div>
 
-<div class="d-flex gap-2 mb-4">
+<div class="d-flex flex-wrap gap-2 mb-4">
     <a class="btn btn-outline-primary"
        href="deployment">
         Validate Deployment
@@ -157,8 +160,18 @@ else
     </a>
 </div>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h3 class="mb-0">Live Telemetry</h3>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h3 class="mb-0">Live Telemetry</h3>
+
+        @if (telemetrySummary.LastUpdated != default)
+        {
+            <small class="text-muted">
+                Last updated:
+                @telemetrySummary.LastUpdated.ToLocalTime().ToString("HH:mm:ss")
+            </small>
+        }
+    </div>
 
     <button class="btn btn-success"
             @onclick="SimulateTelemetry"
@@ -168,55 +181,114 @@ else
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card telemetry-card h-100">
             <div class="card-body">
                 <h6>Latest Temperature</h6>
+
                 <h3>
                     @telemetrySummary.LatestTemperatureC.ToString("0.0") °C
                 </h3>
+
+                @if (telemetrySummary.LatestTemperatureC > 35)
+                {
+                    <span class="badge bg-danger">
+                        Temperature Spike
+                    </span>
+                }
+                else
+                {
+                    <span class="badge bg-success">
+                        Normal
+                    </span>
+                }
             </div>
         </div>
     </div>
 
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card telemetry-card h-100">
             <div class="card-body">
                 <h6>Power Load</h6>
+
                 <h3>
                     @telemetrySummary.AggregatePowerKw.ToString("0.00") kW
                 </h3>
 
                 <small class="text-muted">
-                    Highest: @telemetrySummary.HigherPowerSource
+                    Highest source: @telemetrySummary.HigherPowerSource
                 </small>
             </div>
         </div>
     </div>
 
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card telemetry-card h-100">
             <div class="card-body">
                 <h6>Total Packets</h6>
                 <h3>@telemetrySummary.TotalPackets</h3>
+
+                <small class="text-muted">
+                    Processed by the gateway
+                </small>
             </div>
         </div>
     </div>
 
-    <div class="col-md-3">
-        <div class="card shadow-sm h-100">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card telemetry-card h-100">
             <div class="card-body">
                 <h6>Detected Anomalies</h6>
                 <h3>@telemetrySummary.AnomalyCount</h3>
+
+                @if (telemetrySummary.AnomalyCount > 0)
+                {
+                    <span class="badge bg-danger">
+                        Review Required
+                    </span>
+                }
+                else
+                {
+                    <span class="badge bg-success">
+                        Clear
+                    </span>
+                }
             </div>
         </div>
     </div>
 </div>
 
+@if (DisconnectedSensorCount > 0 || telemetrySummary.AnomalyCount > 0)
+{
+    <div class="card troubleshooting-card mb-4">
+        <div class="card-body">
+            <h5>Troubleshooting Guidance</h5>
+
+            @if (DisconnectedSensorCount > 0)
+            {
+                <p class="mb-2">
+                    Check the disconnected sensor's power, network connection
+                    and last known deployment location.
+                </p>
+            }
+
+            @if (telemetrySummary.AnomalyCount > 0)
+            {
+                <p class="mb-0">
+                    Compare the abnormal reading with recent telemetry before
+                    inspecting the affected sensor.
+                </p>
+            }
+        </div>
+    </div>
+}
+
 @if (telemetryRecords.Count > 0)
 {
+    <h3 class="section-title">Recent Telemetry</h3>
+
     <div class="table-responsive mb-4">
-        <table class="table table-striped table-hover align-middle">
+        <table class="table table-striped table-hover align-middle smart-table">
             <thead>
                 <tr>
                     <th>Sensor</th>
@@ -230,15 +302,13 @@ else
             <tbody>
                 @foreach (var record in telemetryRecords)
                 {
-                    <tr>
+                    <tr class="@(record.IsAnomaly ? "table-danger" : "")">
                         <td>@record.DeviceName</td>
                         <td>@record.Metric</td>
                         <td>@record.Value @record.Unit</td>
                         <td>
-                            @record.Timestamp.ToLocalTime()
-                            .ToString("HH:mm:ss")
+                            @record.Timestamp.ToLocalTime().ToString("HH:mm:ss")
                         </td>
-
                         <td>
                             @if (record.IsAnomaly)
                             {
@@ -260,7 +330,7 @@ else
     </div>
 }
 
-<h3 class="mb-3">Current Sensors</h3>
+<h3 class="section-title">Current Sensors</h3>
 
 @if (isLoading)
 {
@@ -275,7 +345,7 @@ else if (sensors.Count == 0)
 else
 {
     <div class="table-responsive">
-        <table class="table table-striped table-hover align-middle">
+        <table class="table table-striped table-hover align-middle smart-table">
             <thead>
                 <tr>
                     <th>Device</th>
@@ -290,7 +360,10 @@ else
                 @foreach (var sensor in sensors)
                 {
                     <tr>
-                        <td>@sensor.DeviceName</td>
+                        <td>
+                            <strong>@sensor.DeviceName</strong>
+                        </td>
+
                         <td>@sensor.MacAddress</td>
                         <td>@sensor.DeploymentLocation</td>
                         <td>@FormatCategory(sensor.Category)</td>
@@ -398,6 +471,11 @@ else
             {
                 await LoadDashboard();
             }
+            else
+            {
+                errorMessage =
+                    "The API could not process the telemetry batch.";
+            }
         }
         catch
         {
@@ -410,8 +488,7 @@ else
         }
     }
 
-    private string FormatCategory(
-        SensorCategory category)
+    private string FormatCategory(SensorCategory category)
     {
         return category switch
         {
