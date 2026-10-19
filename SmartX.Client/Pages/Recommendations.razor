@@ -1,0 +1,358 @@
+﻿@page "/recommendations"
+@using System.Net.Http.Json
+@using SmartX.Shared
+@inject HttpClient Http
+
+<PageTitle>Predictive Insights - Smart-X</PageTitle>
+
+<h1>Predictive Insights</h1>
+
+<p class="text-muted">
+    View user activity, command patterns and suggested actions.
+</p>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">
+        @errorMessage
+    </div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Tracked Actions</h6>
+                <h2>@overview.TrackedActions</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Recorded Transitions</h6>
+                <h2>@overview.TotalTransitions</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Command Pattern Analysis</h4>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Select Action</label>
+
+                <select class="form-select"
+                        @bind="selectedAction">
+                    <option value="Search Temperature">
+                        Search Temperature
+                    </option>
+                    <option value="Inspect Moisture">
+                        Inspect Moisture
+                    </option>
+                    <option value="Turn Pump On">
+                        Turn Pump On
+                    </option>
+                    <option value="Turn Pump Off">
+                        Turn Pump Off
+                    </option>
+                    <option value="Check Power">
+                        Check Power
+                    </option>
+                    <option value="Inspect Alerts">
+                        Inspect Alerts
+                    </option>
+                    <option value="Check Device">
+                        Check Device
+                    </option>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Activity Type</label>
+
+                <select class="form-select"
+                        @bind="activityType">
+                    <option value="Search">Search</option>
+                    <option value="Command Selection">
+                        Command Selection
+                    </option>
+                </select>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-primary"
+                    @onclick="RecordActivity"
+                    disabled="@isBusy">
+                Record Activity
+            </button>
+
+            <button class="btn btn-outline-primary"
+                    @onclick="PredictSelected"
+                    disabled="@isBusy">
+                Predict Next Action
+            </button>
+
+            <button class="btn btn-outline-secondary"
+                    @onclick="LoadDemoHistory"
+                    disabled="@isBusy">
+                Load Sample Activity
+            </button>
+        </div>
+
+        <p class="small text-muted mt-3 mb-0">
+            This page records activity patterns.
+            Device commands are not executed from this page.
+        </p>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Suggested Actions</h4>
+
+        @if (prediction.SuggestedAction == "NO_PREDICTION")
+        {
+            <div class="alert alert-info mb-0">
+                No prediction available for the selected action.
+                Record more activity to build a pattern.
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-success">
+                <h5 class="mb-2">
+                    @prediction.SuggestedAction
+                </h5>
+
+                <p class="mb-2">
+                    @prediction.Reason
+                </p>
+
+                <strong>
+                    Confidence:
+                    @prediction.ConfidencePercent.ToString("0.0")%
+                </strong>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Command Transition History</h4>
+
+        @if (overview.Transitions.Count == 0)
+        {
+            <p class="text-muted">
+                No command transitions have been recorded.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Previous Action</th>
+                            <th>Next Action</th>
+                            <th>Frequency</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var item in overview.Transitions)
+                        {
+                            <tr>
+                                <td>@item.FromAction</td>
+                                <td>@item.ToAction</td>
+                                <td>
+                                    <span class="badge bg-primary">
+                                        @item.Frequency
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Recent Activity</h4>
+
+        @if (overview.RecentActivities.Count == 0)
+        {
+            <p class="text-muted">
+                No recent activity available.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Action</th>
+                            <th>Type</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var activity in overview.RecentActivities)
+                        {
+                            <tr>
+                                <td>@activity.ActionName</td>
+                                <td>@activity.ActivityType</td>
+                                <td>
+                                    @activity.TimestampUtc.ToLocalTime().ToString("HH:mm:ss")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private RecommendationOverview overview = new();
+    private RecommendationResult prediction = new();
+
+    private string selectedAction = "Inspect Moisture";
+    private string activityType = "Search";
+    private string errorMessage = string.Empty;
+
+    private bool isBusy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshOverview();
+    }
+
+    // Load the current prediction history
+    private async Task RefreshOverview()
+    {
+        try
+        {
+            overview = await Http.GetFromJsonAsync<RecommendationOverview>(
+                "api/recommendations/overview") ?? new();
+
+            prediction = overview.CurrentRecommendation;
+        }
+        catch
+        {
+            errorMessage = "Could not load recommendation data.";
+        }
+    }
+
+    // Record a user activity
+    private async Task RecordActivity()
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            var request = new CommandActionRequest
+            {
+                ActionName = selectedAction,
+                ActivityType = activityType
+            };
+
+            var response = await Http.PostAsJsonAsync(
+                "api/recommendations/activity",
+                request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                overview = await response.Content
+                    .ReadFromJsonAsync<RecommendationOverview>() ?? new();
+
+                prediction = overview.CurrentRecommendation;
+            }
+            else
+            {
+                errorMessage = "Could not record the activity.";
+            }
+        }
+        catch
+        {
+            errorMessage = "The API could not be reached.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    // Get the predicted next action
+    private async Task PredictSelected()
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            string action = Uri.EscapeDataString(selectedAction);
+
+            prediction = await Http.GetFromJsonAsync<RecommendationResult>(
+                $"api/recommendations/predict?action={action}") ?? new();
+        }
+        catch
+        {
+            errorMessage = "Could not retrieve the prediction.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    // Add sample actions to test the graph
+    private async Task LoadDemoHistory()
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            var response = await Http.PostAsync(
+                "api/recommendations/demo",
+                null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                overview = await response.Content
+                    .ReadFromJsonAsync<RecommendationOverview>() ?? new();
+
+                string action = Uri.EscapeDataString(selectedAction);
+
+                prediction = await Http.GetFromJsonAsync<RecommendationResult>(
+                    $"api/recommendations/predict?action={action}") ?? new();
+            }
+            else
+            {
+                errorMessage = "Could not load sample activities.";
+            }
+        }
+        catch
+        {
+            errorMessage = "Could not connect to the API.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}
