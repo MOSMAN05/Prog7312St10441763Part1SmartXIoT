@@ -1,0 +1,498 @@
+﻿@page "/telemetry-history"
+@using System.Net.Http.Json
+@using System.Globalization
+@using SmartX.Shared
+@implements IAsyncDisposable
+@inject HttpClient Http
+
+<PageTitle>Telemetry History - Smart-X</PageTitle>
+
+<h1>Sensor Data Ingestion and Telemetry</h1>
+
+<p class="text-muted">
+    Monitor incoming sensor packets and view timestamp-indexed logs.
+</p>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">
+        @errorMessage
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success">
+        @successMessage
+    </div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Pending Packets</h6>
+                <h2>@queueStatus.PendingCount</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Processed Packets</h6>
+                <h2>@queueStatus.TotalProcessed</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Indexed Timestamps</h6>
+                <h2>@queueStatus.IndexedTimestampCount</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Telemetry Processing</h4>
+
+        <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-success"
+                    disabled="@isBusy"
+                    @onclick="SimulateTelemetry">
+                Simulate Telemetry
+            </button>
+
+            <button class="btn btn-primary"
+                    disabled="@(isBusy || queueStatus.PendingCount == 0)"
+                    @onclick="ProcessQueue">
+                Process Queue
+            </button>
+
+            <button class="btn btn-outline-secondary"
+                    disabled="@isBusy"
+                    @onclick="() => LoadData()">
+                Refresh Data
+            </button>
+        </div>
+
+        <div class="mt-3">
+            <strong>Processing Order:</strong> First-In, First-Out
+        </div>
+
+        <p class="text-muted mt-2 mb-0">
+            New sensor packets enter the queue before being processed
+            and stored in chronological order.
+        </p>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Telemetry History</h4>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Time Range</label>
+
+                <select class="form-select" @bind="selectedMinutes">
+                    <option value="15">Last 15 Minutes</option>
+                    <option value="60">Last Hour</option>
+                    <option value="360">Last 6 Hours</option>
+                    <option value="1440">Last 24 Hours</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Sensor Metric</label>
+
+                <select class="form-select" @bind="metricFilter">
+                    <option value="All">All Metrics</option>
+                    <option value="Temperature">Temperature</option>
+                    <option value="Power Load">Power Load</option>
+                    <option value="Pump State">Pump State</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Reading Status</label>
+
+                <select class="form-select" @bind="statusFilter">
+                    <option value="All">All Readings</option>
+                    <option value="Anomaly">Anomalies</option>
+                    <option value="Normal">Normal</option>
+                </select>
+            </div>
+        </div>
+
+        <button class="btn btn-outline-primary"
+                disabled="@isBusy"
+                @onclick="() => LoadData()">
+            Apply Time Range
+        </button>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Temperature Timeline</h4>
+
+        <p class="text-muted">
+            Recent temperature readings within the selected time range.
+        </p>
+
+        @if (ChartPoints.Count == 0)
+        {
+            <p class="text-muted">
+                No temperature readings available.
+            </p>
+        }
+        else
+        {
+            <div style="height:190px; display:flex; align-items:flex-end; gap:6px; overflow-x:auto; padding:10px 5px; border-bottom:1px solid #cbd5e1;">
+                @foreach (TemperaturePoint point in ChartPoints)
+                {
+                    <div title="@($"{point.Value:0.0} °C at {point.Timestamp.ToLocalTime():HH:mm:ss}")"
+                         style="@GetBarStyle(point)">
+                    </div>
+                }
+            </div>
+
+            <div class="d-flex flex-wrap gap-3 mt-3">
+                <span class="text-muted">
+                    <span style="color:#1769aa;">■</span>
+                    Normal Reading
+                </span>
+
+                <span class="text-muted">
+                    <span style="color:#dc3545;">■</span>
+                    Anomaly
+                </span>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Indexed Sensor Logs</h4>
+
+        <p class="text-muted">
+            Records are retrieved using the timestamp index.
+        </p>
+
+        @if (FilteredRecords.Count == 0)
+        {
+            <p class="text-muted">
+                No records match the selected filters.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Sensor</th>
+                            <th>Metric</th>
+                            <th>Reading</th>
+                            <th>Timestamp</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var record in FilteredRecords
+                            .OrderByDescending(r => r.Timestamp)
+                            .Take(100))
+                        {
+                            <tr>
+                                <td>@record.DeviceName</td>
+                                <td>@record.Metric</td>
+                                <td>@record.Value @record.Unit</td>
+
+                                <td>
+                                    @record.Timestamp.ToLocalTime().ToString("dd MMM yyyy HH:mm:ss")
+                                </td>
+
+                                <td>
+                                    @if (record.IsAnomaly)
+                                    {
+                                        <span class="badge bg-danger">
+                                            Anomaly
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">
+                                            Normal
+                                        </span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<TelemetryRecord> records = new();
+    private TelemetryQueueStatus queueStatus = new();
+
+    private int selectedMinutes = 60;
+    private string metricFilter = "All";
+    private string statusFilter = "All";
+
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    private bool isBusy;
+
+    private CancellationTokenSource? refreshCancellation;
+    private Task? refreshTask;
+
+    private sealed class TemperaturePoint
+    {
+        public double Value { get; set; }
+        public bool IsAnomaly { get; set; }
+        public DateTime Timestamp { get; set; }
+    }
+
+    private List<TelemetryRecord> FilteredRecords =>
+        records.Where(record =>
+        {
+            bool matchesMetric = metricFilter == "All" ||
+                record.Metric.Equals(
+                    metricFilter,
+                    StringComparison.OrdinalIgnoreCase);
+
+            bool matchesStatus = statusFilter == "All" ||
+                (statusFilter == "Anomaly" && record.IsAnomaly) ||
+                (statusFilter == "Normal" && !record.IsAnomaly);
+
+            return matchesMetric && matchesStatus;
+        }).ToList();
+
+    private List<TemperaturePoint> ChartPoints
+    {
+        get
+        {
+            var points = new List<TemperaturePoint>();
+
+            foreach (var record in records)
+            {
+                if (!record.Metric.Equals(
+                    "Temperature",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (double.TryParse(
+                    record.Value,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out double value))
+                {
+                    points.Add(new TemperaturePoint
+                    {
+                        Value = value,
+                        IsAnomaly = record.IsAnomaly,
+                        Timestamp = record.Timestamp
+                    });
+                }
+            }
+
+            return points.TakeLast(30).ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+
+        refreshCancellation = new CancellationTokenSource();
+        refreshTask = RefreshLoop(refreshCancellation.Token);
+    }
+
+    private async Task LoadData(
+        CancellationToken cancellationToken = default)
+    {
+        if (isBusy)
+        {
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            DateTime now = DateTime.UtcNow;
+            DateTime start = now.AddMinutes(-selectedMinutes);
+
+            string from = Uri.EscapeDataString(start.ToString("O"));
+            string to = Uri.EscapeDataString(now.ToString("O"));
+
+            string url =
+                $"api/telemetry/logs?fromUtc={from}&toUtc={to}&limit=1000";
+
+            var logsTask = Http.GetFromJsonAsync<List<TelemetryRecord>>(
+                url, cancellationToken);
+
+            var queueTask = Http.GetFromJsonAsync<TelemetryQueueStatus>(
+                "api/telemetry/queue", cancellationToken);
+
+            await Task.WhenAll(logsTask, queueTask);
+
+            records = await logsTask ?? new();
+            queueStatus = await queueTask ?? new();
+
+            errorMessage = string.Empty;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            errorMessage = "Could not retrieve telemetry data.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task SimulateTelemetry()
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var response = await Http.PostAsync(
+                "api/telemetry/simulate", null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = "New telemetry readings generated.";
+            }
+            else
+            {
+                errorMessage = "Could not generate telemetry.";
+            }
+        }
+        catch
+        {
+            errorMessage = "Could not connect to the telemetry API.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+
+        await LoadData();
+    }
+
+    private async Task ProcessQueue()
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var response = await Http.PostAsync(
+                "api/telemetry/process", null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = "Queued telemetry processed.";
+            }
+            else
+            {
+                errorMessage = "Could not process the queue.";
+            }
+        }
+        catch
+        {
+            errorMessage = "Could not connect to the telemetry API.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+
+        await LoadData();
+    }
+
+    // Calculate the height of each temperature bar
+    private static string GetBarStyle(TemperaturePoint point)
+    {
+        double height = Math.Clamp(
+            point.Value / 60.0 * 100.0,
+            8.0,
+            100.0);
+
+        string colour = point.IsAnomaly
+            ? "#dc3545"
+            : "#1769aa";
+
+        return $"min-width:18px; width:18px; " +
+               $"height:{height.ToString("0", CultureInfo.InvariantCulture)}%; " +
+               $"background:{colour}; border-radius:4px 4px 0 0;";
+    }
+
+    private async Task RefreshLoop(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (!isBusy)
+                    {
+                        await LoadData(token);
+                    }
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (refreshCancellation == null)
+        {
+            return;
+        }
+
+        refreshCancellation.Cancel();
+
+        if (refreshTask != null)
+        {
+            try
+            {
+                await refreshTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        refreshCancellation.Dispose();
+    }
+}

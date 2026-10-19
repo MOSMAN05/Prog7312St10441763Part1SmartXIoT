@@ -1,6 +1,7 @@
 ﻿@page "/"
 @using System.Net.Http.Json
 @using SmartX.Shared
+@implements IAsyncDisposable
 @inject HttpClient Http
 
 <PageTitle>Smart-X Dashboard</PageTitle>
@@ -9,49 +10,52 @@
     <div>
         <h1>Smart-X IoT Gateway</h1>
         <p class="text-muted mb-0">
-            Monitor sensor registrations, telemetry ingestion and gateway activity.
+            Monitor connected devices, telemetry and gateway activity.
         </p>
     </div>
 
     <button class="btn btn-outline-primary"
-            @onclick="LoadDashboard"
-            disabled="@isLoading">
-        @(isLoading ? "Refreshing..." : "Refresh Dashboard")
+            disabled="@isLoading"
+            @onclick="() => LoadDashboard()">
+        Refresh Dashboard
     </button>
 </div>
 
-@if (!string.IsNullOrWhiteSpace(errorMessage))
+@if (!string.IsNullOrEmpty(errorMessage))
 {
     <div class="alert alert-warning">
         @errorMessage
     </div>
 }
 
-@if (DisconnectedSensorCount > 0 || telemetrySummary.AnomalyCount > 0)
+@if (DisconnectedSensorCount > 0 || summary.AnomalyCount > 0)
 {
-    <div class="alert alert-danger system-alert">
+    <div class="alert alert-danger">
         <h5>System Attention Required</h5>
 
         @if (DisconnectedSensorCount > 0)
         {
             <div>
-                @DisconnectedSensorCount sensor(s) are currently disconnected.
+                @DisconnectedSensorCount disconnected device(s) detected.
             </div>
         }
 
-        @if (telemetrySummary.AnomalyCount > 0)
+        @if (summary.AnomalyCount > 0)
         {
             <div>
-                @telemetrySummary.AnomalyCount anomalous telemetry reading(s)
-                have been detected.
+                @summary.AnomalyCount abnormal telemetry reading(s) recorded.
             </div>
         }
+
+        <a href="alerts" class="btn btn-sm btn-outline-danger mt-2">
+            Review Alerts
+        </a>
     </div>
 }
 else
 {
     <div class="alert alert-success">
-        All monitored sensor activity is currently normal.
+        All monitored devices are reporting normally.
     </div>
 }
 
@@ -61,9 +65,7 @@ else
             <div class="card-body">
                 <h6 class="text-muted">Registered Sensors</h6>
                 <h2>@sensors.Count</h2>
-                <p class="mb-0">
-                    Devices registered with the gateway.
-                </p>
+                <p class="mb-0">Devices registered with Smart-X.</p>
             </div>
         </div>
     </div>
@@ -73,9 +75,7 @@ else
             <div class="card-body">
                 <h6 class="text-muted">Online Sensors</h6>
                 <h2 class="text-success">@OnlineSensorCount</h2>
-                <p class="mb-0">
-                    Sensors currently reporting as online.
-                </p>
+                <p class="mb-0">Devices currently connected.</p>
             </div>
         </div>
     </div>
@@ -85,9 +85,7 @@ else
             <div class="card-body">
                 <h6 class="text-muted">Disconnected Sensors</h6>
                 <h2 class="text-danger">@DisconnectedSensorCount</h2>
-                <p class="mb-0">
-                    Sensors requiring connection checks.
-                </p>
+                <p class="mb-0">Devices requiring attention.</p>
             </div>
         </div>
     </div>
@@ -98,15 +96,15 @@ else
 <div class="row g-3 mb-4">
     <div class="col-lg-4">
         <div class="card module-card active-module h-100">
-            <div class="card-body">
+            <div class="card-body d-flex flex-column">
                 <h5>Sensor Data Ingestion and Telemetry</h5>
-
                 <p>
-                    Register devices and monitor incoming IoT sensor data.
+                    View incoming telemetry, processing queues
+                    and historical sensor readings.
                 </p>
 
-                <a class="btn btn-primary"
-                   href="sensors/register">
+                <a class="btn btn-primary mt-auto"
+                   href="telemetry-history">
                     Open Module
                 </a>
             </div>
@@ -114,49 +112,55 @@ else
     </div>
 
     <div class="col-lg-4">
-        <div class="card module-card h-100">
-            <div class="card-body">
+        <div class="card module-card active-module h-100">
+            <div class="card-body d-flex flex-column">
                 <h5>Real-Time Command Stream and History</h5>
-
                 <p>
-                    Device command processing and command history.
+                    Monitor device states, issue commands
+                    and review command history.
                 </p>
 
-                <button class="btn btn-secondary"
-                        disabled>
-                    Part 2
-                </button>
+                <a class="btn btn-primary mt-auto"
+                   href="command-stream">
+                    Open Module
+                </a>
             </div>
         </div>
     </div>
 
     <div class="col-lg-4">
-        <div class="card module-card h-100">
-            <div class="card-body">
+        <div class="card module-card active-module h-100">
+            <div class="card-body d-flex flex-column">
                 <h5>Network Topology and Mesh Routing</h5>
-
                 <p>
-                    Visualise deployment zones and future mesh routes.
+                    View the network structure and calculate
+                    the shortest route for device alerts.
                 </p>
 
-                <button class="btn btn-secondary"
-                        disabled>
-                    Final PoE
-                </button>
+                <a class="btn btn-primary mt-auto"
+                   href="network-topology">
+                    Open Module
+                </a>
             </div>
         </div>
     </div>
 </div>
 
 <div class="d-flex flex-wrap gap-2 mb-4">
-    <a class="btn btn-outline-primary"
-       href="deployment">
+    <a class="btn btn-outline-primary" href="sensors/register">
+        Register Sensor
+    </a>
+
+    <a class="btn btn-outline-primary" href="recommendations">
+        Predictive Insights
+    </a>
+
+    <a class="btn btn-outline-primary" href="deployment">
         Validate Deployment
     </a>
 
-    <a class="btn btn-outline-primary"
-       href="sensor-files">
-        Manage Sensor Files
+    <a class="btn btn-outline-primary" href="sensor-files">
+        Sensor Files
     </a>
 </div>
 
@@ -164,18 +168,18 @@ else
     <div>
         <h3 class="mb-0">Live Telemetry</h3>
 
-        @if (telemetrySummary.LastUpdated != default)
+        @if (summary.LastUpdated != default)
         {
             <small class="text-muted">
                 Last updated:
-                @telemetrySummary.LastUpdated.ToLocalTime().ToString("HH:mm:ss")
+                @summary.LastUpdated.ToLocalTime().ToString("HH:mm:ss")
             </small>
         }
     </div>
 
     <button class="btn btn-success"
-            @onclick="SimulateTelemetry"
-            disabled="@isSimulating">
+            disabled="@isSimulating"
+            @onclick="SimulateTelemetry">
         @(isSimulating ? "Processing..." : "Simulate Telemetry")
     </button>
 </div>
@@ -185,12 +189,9 @@ else
         <div class="card telemetry-card h-100">
             <div class="card-body">
                 <h6>Latest Temperature</h6>
+                <h3>@summary.LatestTemperatureC.ToString("0.0") °C</h3>
 
-                <h3>
-                    @telemetrySummary.LatestTemperatureC.ToString("0.0") °C
-                </h3>
-
-                @if (telemetrySummary.LatestTemperatureC > 35)
+                @if (summary.LatestTemperatureC > 35)
                 {
                     <span class="badge bg-danger">
                         Temperature Spike
@@ -198,9 +199,7 @@ else
                 }
                 else
                 {
-                    <span class="badge bg-success">
-                        Normal
-                    </span>
+                    <span class="badge bg-success">Normal</span>
                 }
             </div>
         </div>
@@ -210,13 +209,10 @@ else
         <div class="card telemetry-card h-100">
             <div class="card-body">
                 <h6>Power Load</h6>
-
-                <h3>
-                    @telemetrySummary.AggregatePowerKw.ToString("0.00") kW
-                </h3>
+                <h3>@summary.AggregatePowerKw.ToString("0.00") kW</h3>
 
                 <small class="text-muted">
-                    Highest source: @telemetrySummary.HigherPowerSource
+                    Highest source: @summary.HigherPowerSource
                 </small>
             </div>
         </div>
@@ -226,7 +222,7 @@ else
         <div class="card telemetry-card h-100">
             <div class="card-body">
                 <h6>Total Packets</h6>
-                <h3>@telemetrySummary.TotalPackets</h3>
+                <h3>@summary.TotalPackets</h3>
 
                 <small class="text-muted">
                     Processed by the gateway
@@ -239,26 +235,17 @@ else
         <div class="card telemetry-card h-100">
             <div class="card-body">
                 <h6>Detected Anomalies</h6>
-                <h3>@telemetrySummary.AnomalyCount</h3>
+                <h3>@summary.AnomalyCount</h3>
 
-                @if (telemetrySummary.AnomalyCount > 0)
-                {
-                    <span class="badge bg-danger">
-                        Review Required
-                    </span>
-                }
-                else
-                {
-                    <span class="badge bg-success">
-                        Clear
-                    </span>
-                }
+                <small class="text-muted">
+                    Total abnormal readings
+                </small>
             </div>
         </div>
     </div>
 </div>
 
-@if (DisconnectedSensorCount > 0 || telemetrySummary.AnomalyCount > 0)
+@if (DisconnectedSensorCount > 0 || summary.AnomalyCount > 0)
 {
     <div class="card troubleshooting-card mb-4">
         <div class="card-body">
@@ -266,41 +253,45 @@ else
 
             @if (DisconnectedSensorCount > 0)
             {
-                <p class="mb-2">
-                    Check the disconnected sensor's power, network connection
-                    and last known deployment location.
+                <p>
+                    Check the disconnected device's power supply,
+                    network connection and deployment location.
                 </p>
             }
 
-            @if (telemetrySummary.AnomalyCount > 0)
+            @if (summary.AnomalyCount > 0)
             {
                 <p class="mb-0">
-                    Compare the abnormal reading with recent telemetry before
-                    inspecting the affected sensor.
+                    Compare abnormal readings with historical telemetry
+                    before checking the affected sensor.
                 </p>
             }
         </div>
     </div>
 }
 
-@if (telemetryRecords.Count > 0)
-{
-    <h3 class="section-title">Recent Telemetry</h3>
+<h3 class="section-title">Recent Telemetry</h3>
 
+@if (records.Count == 0)
+{
+    <p class="text-muted">No telemetry readings available.</p>
+}
+else
+{
     <div class="table-responsive mb-4">
         <table class="table table-striped table-hover align-middle smart-table">
             <thead>
                 <tr>
                     <th>Sensor</th>
                     <th>Metric</th>
-                    <th>Value</th>
+                    <th>Reading</th>
                     <th>Time</th>
                     <th>Status</th>
                 </tr>
             </thead>
 
             <tbody>
-                @foreach (var record in telemetryRecords)
+                @foreach (var record in records)
                 {
                     <tr class="@(record.IsAnomaly ? "table-danger" : "")">
                         <td>@record.DeviceName</td>
@@ -310,18 +301,9 @@ else
                             @record.Timestamp.ToLocalTime().ToString("HH:mm:ss")
                         </td>
                         <td>
-                            @if (record.IsAnomaly)
-                            {
-                                <span class="badge bg-danger">
-                                    Anomaly
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-success">
-                                    Normal
-                                </span>
-                            }
+                            <span class="badge @(record.IsAnomaly ? "bg-danger" : "bg-success")">
+                                @(record.IsAnomaly ? "Anomaly" : "Normal")
+                            </span>
                         </td>
                     </tr>
                 }
@@ -332,15 +314,9 @@ else
 
 <h3 class="section-title">Current Sensors</h3>
 
-@if (isLoading)
+@if (sensors.Count == 0)
 {
-    <p>Loading sensors...</p>
-}
-else if (sensors.Count == 0)
-{
-    <div class="alert alert-info">
-        No sensors are currently registered.
-    </div>
+    <p class="text-muted">No registered sensors available.</p>
 }
 else
 {
@@ -360,27 +336,14 @@ else
                 @foreach (var sensor in sensors)
                 {
                     <tr>
-                        <td>
-                            <strong>@sensor.DeviceName</strong>
-                        </td>
-
+                        <td><strong>@sensor.DeviceName</strong></td>
                         <td>@sensor.MacAddress</td>
                         <td>@sensor.DeploymentLocation</td>
                         <td>@FormatCategory(sensor.Category)</td>
-
                         <td>
-                            @if (sensor.IsOnline)
-                            {
-                                <span class="badge bg-success">
-                                    Online
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-danger">
-                                    Disconnected
-                                </span>
-                            }
+                            <span class="badge @(sensor.IsOnline ? "bg-success" : "bg-danger")">
+                                @(sensor.IsOnline ? "Online" : "Disconnected")
+                            </span>
                         </td>
                     </tr>
                 }
@@ -391,14 +354,15 @@ else
 
 @code {
     private List<Sensor> sensors = new();
-    private List<TelemetryRecord> telemetryRecords = new();
-
-    private TelemetrySummary telemetrySummary = new();
-
-    private bool isLoading = true;
-    private bool isSimulating;
+    private List<TelemetryRecord> records = new();
+    private TelemetrySummary summary = new();
 
     private string errorMessage = string.Empty;
+    private bool isLoading;
+    private bool isSimulating;
+
+    private CancellationTokenSource? refreshCancellation;
+    private Task? refreshTask;
 
     private int OnlineSensorCount =>
         sensors.Count(sensor => sensor.IsOnline);
@@ -409,49 +373,73 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadDashboard();
+
+        refreshCancellation = new CancellationTokenSource();
+        refreshTask = RefreshLoop(refreshCancellation.Token);
     }
 
-    private async Task LoadDashboard()
+    private async Task LoadDashboard(
+        CancellationToken cancellationToken = default)
     {
+        if (isLoading)
+        {
+            return;
+        }
+
         isLoading = true;
-        errorMessage = string.Empty;
 
         try
         {
-            var sensorTask =
-                Http.GetFromJsonAsync<List<Sensor>>(
-                    "api/sensors");
+            var sensorTask = Http.GetFromJsonAsync<List<Sensor>>(
+                "api/sensors", cancellationToken);
 
-            var summaryTask =
-                Http.GetFromJsonAsync<TelemetrySummary>(
-                    "api/telemetry/summary");
+            var summaryTask = Http.GetFromJsonAsync<TelemetrySummary>(
+                "api/telemetry/summary", cancellationToken);
 
-            var telemetryTask =
-                Http.GetFromJsonAsync<List<TelemetryRecord>>(
-                    "api/telemetry/recent");
+            var recordTask = Http.GetFromJsonAsync<List<TelemetryRecord>>(
+                "api/telemetry/recent", cancellationToken);
 
-            await Task.WhenAll(
-                sensorTask,
-                summaryTask,
-                telemetryTask);
+            await Task.WhenAll(sensorTask, summaryTask, recordTask);
 
-            sensors =
-                await sensorTask ?? new List<Sensor>();
+            sensors = await sensorTask ?? new();
+            summary = await summaryTask ?? new();
+            records = await recordTask ?? new();
 
-            telemetrySummary =
-                await summaryTask ?? new TelemetrySummary();
-
-            telemetryRecords =
-                await telemetryTask ?? new List<TelemetryRecord>();
+            errorMessage = string.Empty;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch
         {
-            errorMessage =
-                "The dashboard could not connect to the Smart-X API.";
+            errorMessage = "Could not connect to the Smart-X API.";
         }
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private async Task RefreshLoop(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (!isLoading && !isSimulating)
+                    {
+                        await LoadDashboard(token);
+                    }
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -462,10 +450,8 @@ else
 
         try
         {
-            var response =
-                await Http.PostAsync(
-                    "api/telemetry/simulate",
-                    null);
+            var response = await Http.PostAsync(
+                "api/telemetry/simulate", null);
 
             if (response.IsSuccessStatusCode)
             {
@@ -473,14 +459,12 @@ else
             }
             else
             {
-                errorMessage =
-                    "The API could not process the telemetry batch.";
+                errorMessage = "Could not process the telemetry batch.";
             }
         }
         catch
         {
-            errorMessage =
-                "Telemetry simulation could not be completed.";
+            errorMessage = "Telemetry simulation failed.";
         }
         finally
         {
@@ -488,14 +472,33 @@ else
         }
     }
 
-    private string FormatCategory(SensorCategory category)
+    private static string FormatCategory(SensorCategory category)
     {
-        return category switch
-        {
-            SensorCategory.PowerConsumption =>
-                "Power Consumption",
+        return category == SensorCategory.PowerConsumption
+            ? "Power Consumption"
+            : category.ToString();
+    }
 
-            _ => category.ToString()
-        };
+    public async ValueTask DisposeAsync()
+    {
+        if (refreshCancellation == null)
+        {
+            return;
+        }
+
+        refreshCancellation.Cancel();
+
+        if (refreshTask != null)
+        {
+            try
+            {
+                await refreshTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        refreshCancellation.Dispose();
     }
 }

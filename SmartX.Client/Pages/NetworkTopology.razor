@@ -1,0 +1,342 @@
+﻿@page "/network-topology"
+@using System.Net.Http.Json
+@using SmartX.Shared
+@inject HttpClient Http
+
+<PageTitle>Network Topology - Smart-X</PageTitle>
+
+<h1>Network Topology and Mesh Routing</h1>
+
+<p class="text-muted">
+    View connected network nodes and calculate the shortest route
+    for sensor alerts.
+</p>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">
+        @errorMessage
+    </div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Network Nodes</h6>
+                <h2>@network.Nodes.Count</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Network Connections</h6>
+                <h2>@network.Connections.Count</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Registered Sensors</h6>
+                <h2>@sensors.Count</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+            <h4 class="mb-0">Network Map</h4>
+
+            <button class="btn btn-outline-primary btn-sm"
+                    disabled="@isLoading"
+                    @onclick="LoadNetwork">
+                Refresh Network
+            </button>
+        </div>
+
+        <p class="text-muted small">
+            Blue connections show the selected shortest route.
+            Connection delays are simulated.
+        </p>
+
+        @if (network.Nodes.Count == 0)
+        {
+            <p class="text-muted">
+                Loading network information...
+            </p>
+        }
+        else
+        {
+            <div style="overflow-x:auto;">
+                <svg viewBox="0 0 960 520"
+                     xmlns="http://www.w3.org/2000/svg"
+                     style="min-width:680px; width:100%; background:#f8fafc; border-radius:12px;"
+                     role="img"
+                     aria-label="Smart-X network topology">
+
+                    @foreach (var connection in network.Connections)
+                    {
+                        if (positions.TryGetValue(connection.FromNode, out var start)
+                            && positions.TryGetValue(connection.ToNode, out var end))
+                        {
+                            bool highlighted = IsRouteConnection(connection);
+
+                            <line x1="@start.X"
+                                  y1="@start.Y"
+                                  x2="@end.X"
+                                  y2="@end.Y"
+                                  stroke="@(highlighted ? "#2563eb" : "#94a3b8")"
+                                  stroke-width="@(highlighted ? "5" : "2")" />
+
+                            <foreignObject x="@((start.X + end.X) / 2 - 40)"
+                                           y="@((start.Y + end.Y) / 2 - 22)"
+                                           width="80"
+                                           height="25">
+
+                                <div xmlns="http://www.w3.org/1999/xhtml"
+                                     style="font-size:13px; font-weight:600; color:#475569; text-align:center; background:#f8fafc;">
+                                    @connection.LatencyMs ms
+                                </div>
+
+                            </foreignObject>
+                        }
+                    }
+
+                    @foreach (string node in network.Nodes)
+                    {
+                        if (positions.TryGetValue(node, out var position))
+                        {
+                            bool highlighted = route.Path.Contains(node);
+
+                            <circle cx="@position.X"
+                                    cy="@position.Y"
+                                    r="25"
+                                    fill="@(highlighted ? "#2563eb" : "#0f172a")"
+                                    stroke="#ffffff"
+                                    stroke-width="3" />
+
+                            <circle cx="@position.X"
+                                    cy="@position.Y"
+                                    r="8"
+                                    fill="#ffffff" />
+
+                            <foreignObject x="@(position.X - 85)"
+                                           y="@(position.Y + 27)"
+                                           width="170"
+                                           height="45">
+
+                                <div xmlns="http://www.w3.org/1999/xhtml"
+                                     style="font-size:14px; font-weight:600; color:#0f172a; text-align:center;">
+                                    @node
+                                </div>
+
+                            </foreignObject>
+                        }
+                    }
+                </svg>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Shortest Path Calculator</h4>
+
+        <div class="row g-3 align-items-end">
+            <div class="col-md-7">
+                <label class="form-label">Starting Network Node</label>
+
+                <select class="form-select" @bind="selectedNode">
+                    @foreach (string node in network.Nodes)
+                    {
+                        <option value="@node">@node</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-5">
+                <button class="btn btn-primary w-100"
+                        disabled="@(isLoading || network.Nodes.Count == 0)"
+                        @onclick="CalculateRoute">
+                    Calculate Shortest Path
+                </button>
+            </div>
+        </div>
+
+        @if (route.IsReachable)
+        {
+            <div class="alert alert-success mt-3 mb-0">
+                <h5>Shortest Route Found</h5>
+
+                <p class="mb-2">
+                    @string.Join(" → ", route.Path)
+                </p>
+
+                <strong>
+                    Total Latency: @route.TotalLatencyMs ms
+                </strong>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(route.Status))
+        {
+            <div class="alert alert-warning mt-3 mb-0">
+                @route.Status
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Network Connection Details</h4>
+
+        <div class="table-responsive">
+            <table class="table table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Starting Node</th>
+                        <th>Connected Node</th>
+                        <th>Latency</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var connection in network.Connections)
+                    {
+                        <tr>
+                            <td>@connection.FromNode</td>
+                            <td>@connection.ToNode</td>
+                            <td>@connection.LatencyMs ms</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-primary"
+               href="alerts">
+                View Priority Alerts
+            </a>
+
+            <a class="btn btn-outline-secondary"
+               href="command-stream">
+                Real-Time Commands
+            </a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private NetworkOverview network = new();
+    private AlertRouteResult route = new();
+    private List<Sensor> sensors = new();
+
+    private string selectedNode = "Hydroponics Bay";
+    private string errorMessage = string.Empty;
+    private bool isLoading;
+
+    private readonly Dictionary<string, (int X, int Y)> positions =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Hydroponics Bay"] = (120, 110),
+            ["Relay North"] = (340, 110),
+            ["Gateway"] = (550, 210),
+            ["Control Hub"] = (755, 325),
+            ["Dashboard"] = (860, 125),
+            ["Utility Room"] = (130, 300),
+            ["Zone 2"] = (130, 435),
+            ["Relay South"] = (345, 390)
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNetwork();
+    }
+
+    private async Task LoadNetwork()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            network = await Http.GetFromJsonAsync<NetworkOverview>(
+                "api/alerts/network") ?? new();
+
+            sensors = await Http.GetFromJsonAsync<List<Sensor>>(
+                "api/sensors") ?? new();
+
+            if (network.Nodes.Count > 0 &&
+                !network.Nodes.Contains(selectedNode))
+            {
+                selectedNode = network.Nodes[0];
+            }
+        }
+        catch
+        {
+            errorMessage = "Could not load the network information.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task CalculateRoute()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            string node = Uri.EscapeDataString(selectedNode);
+
+            route = await Http.GetFromJsonAsync<AlertRouteResult>(
+                $"api/alerts/route?sourceNode={node}") ?? new();
+        }
+        catch
+        {
+            errorMessage = "Could not calculate the network route.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private bool IsRouteConnection(NetworkConnection connection)
+    {
+        for (int i = 0; i < route.Path.Count - 1; i++)
+        {
+            string current = route.Path[i];
+            string next = route.Path[i + 1];
+
+            bool forward =
+                current.Equals(connection.FromNode,
+                    StringComparison.OrdinalIgnoreCase) &&
+                next.Equals(connection.ToNode,
+                    StringComparison.OrdinalIgnoreCase);
+
+            bool reverse =
+                current.Equals(connection.ToNode,
+                    StringComparison.OrdinalIgnoreCase) &&
+                next.Equals(connection.FromNode,
+                    StringComparison.OrdinalIgnoreCase);
+
+            if (forward || reverse)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
