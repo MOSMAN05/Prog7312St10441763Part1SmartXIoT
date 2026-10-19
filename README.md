@@ -141,7 +141,7 @@ This project only has simulated data we don't have actual IoT devices hooked up.
 
 ## Youtube Video
 
-YouTube Link: 
+YouTube Link: https://youtu.be/ySqgEft5ZGY
 
 This video will demonstrate our ability to process our readings and use more advance data structures.
 
