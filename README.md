@@ -4,11 +4,9 @@
 
 
 
-!  \[.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square)  
-
-!  \[C#](https://img.shields.io/badge/C%23-Programming-239120?style=flat-square)  
-
-!  \[Blazor](https://img.shields.io/badge/Blazor-WebAssembly-512BD4?style=flat-square)  
+![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square)
+![C#](https://img.shields.io/badge/C%23-Programming-239120?style=flat-square)
+![Blazor](https://img.shields.io/badge/Blazor-WebAssembly-512BD4?style=flat-square) 
 
 
 
