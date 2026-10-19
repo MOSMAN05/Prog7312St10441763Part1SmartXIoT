@@ -1,0 +1,663 @@
+﻿@page "/command-stream"
+@using System.Net.Http.Json
+@using SmartX.Shared
+@implements IAsyncDisposable
+@inject HttpClient Http
+
+<PageTitle>Command Stream - Smart-X</PageTitle>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h1>Real-Time Command Stream</h1>
+        <p class="text-muted mb-0">
+            Monitor registered sensors, issue commands and review activity.
+        </p>
+    </div>
+
+    <button class="btn btn-outline-primary"
+            disabled="@isBusy"
+            @onclick="() => RefreshData()">
+        Refresh Dashboard
+    </button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">
+        @errorMessage
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success">
+        @successMessage
+    </div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3 col-sm-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Registered Devices</h6>
+                <h2>@registryStatus.RegisteredCount</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 col-sm-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Online Devices</h6>
+                <h2 class="text-success">
+                    @registryStatus.OnlineCount
+                </h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 col-sm-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Disconnected</h6>
+                <h2 class="text-danger">
+                    @registryStatus.DisconnectedCount
+                </h2>
+                <small class="text-muted">
+                    @registryStatus.TrackedOfflineAlerts unique warnings
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 col-sm-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Manual Commands</h6>
+                <h2>@commands.TotalCommands</h2>
+                <small class="text-muted">
+                    @commands.UndoAvailable commands can be undone
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <h4 class="mb-0">Device Management</h4>
+            <span class="badge bg-primary">
+                Auto-refresh every 4 seconds
+            </span>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-5">
+                <label class="form-label">Search Devices</label>
+                <input class="form-control"
+                       placeholder="Device name, MAC address or location"
+                       @bind="searchText"
+                       @bind:event="oninput" />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Category</label>
+                <select class="form-select" @bind="categoryFilter">
+                    <option value="All">All Categories</option>
+                    <option value="Environmental">Environmental</option>
+                    <option value="PowerConsumption">Power Consumption</option>
+                    <option value="Actuator">Actuators</option>
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Connection Status</label>
+                <select class="form-select" @bind="statusFilter">
+                    <option value="All">All Devices</option>
+                    <option value="Online">Online</option>
+                    <option value="Offline">Disconnected</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Device</th>
+                        <th>MAC Address</th>
+                        <th>Category</th>
+                        <th>Connection</th>
+                        <th>Actuator</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (Sensor sensor in FilteredSensors)
+                    {
+                        <tr @key="sensor.Id">
+                            <td>
+                                <strong>@sensor.DeviceName</strong>
+                                <div class="small text-muted">
+                                    @sensor.DeploymentLocation
+                                </div>
+                            </td>
+
+                            <td>@sensor.MacAddress</td>
+                            <td>@sensor.Category</td>
+
+                            <td>
+                                @if (sensor.IsOnline)
+                                {
+                                    <span class="badge bg-success">
+                                        Online
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">
+                                        Disconnected
+                                    </span>
+                                }
+                            </td>
+
+                            <td>
+                                @if (sensor.Category == SensorCategory.Actuator)
+                                {
+                                    <span class="badge bg-secondary">
+                                        @GetActuatorState(sensor.Id)
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">N/A</span>
+                                }
+                            </td>
+
+                            <td>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <button class="btn btn-sm btn-outline-secondary"
+                                            disabled="@isBusy"
+                                            @onclick="() => ChangeConnection(sensor)">
+                                        @(sensor.IsOnline ? "Disconnect" : "Reconnect")
+                                    </button>
+
+                                    @if (sensor.Category == SensorCategory.Actuator)
+                                    {
+                                        <button class="btn btn-sm btn-success"
+                                                disabled="@(isBusy || !sensor.IsOnline)"
+                                                @onclick="() => SendCommand(sensor.Id, true)">
+                                            Turn On
+                                        </button>
+
+                                        <button class="btn btn-sm btn-outline-danger"
+                                                disabled="@(isBusy || !sensor.IsOnline)"
+                                                @onclick="() => SendCommand(sensor.Id, false)">
+                                            Turn Off
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (FilteredSensors.Count == 0)
+        {
+            <p class="text-muted">
+                No devices match the selected filters.
+            </p>
+        }
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <h4 class="mb-0">Command History</h4>
+
+            <button class="btn btn-warning"
+                    disabled="@(isBusy || commands.UndoAvailable == 0)"
+                    @onclick="UndoLastCommand">
+                Undo Last Command
+            </button>
+        </div>
+
+        @if (commands.History.Count == 0)
+        {
+            <p class="text-muted">
+                No manual commands have been sent yet.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Device</th>
+                            <th>Command</th>
+                            <th>Previous State</th>
+                            <th>New State</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var entry in commands.History)
+                        {
+                            <tr>
+                                <td>@entry.DeviceName</td>
+                                <td>
+                                    @if (entry.IsUndo)
+                                    {
+                                        <span class="badge bg-warning text-dark">
+                                            @entry.Action
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        @entry.Action
+                                    }
+                                </td>
+                                <td>@FormatState(entry.PreviousState)</td>
+                                <td>@FormatState(entry.NewState)</td>
+                                <td>
+                                    @entry.TimestampUtc.ToLocalTime().ToString("HH:mm:ss")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <h4 class="mb-0">Recent Telemetry</h4>
+
+            <button class="btn btn-outline-success"
+                    disabled="@isBusy"
+                    @onclick="SimulateTelemetry">
+                Simulate Telemetry
+            </button>
+        </div>
+
+        @if (recentTelemetry.Count == 0)
+        {
+            <p class="text-muted">
+                No telemetry readings available.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Sensor</th>
+                            <th>Metric</th>
+                            <th>Reading</th>
+                            <th>Status</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var record in recentTelemetry)
+                        {
+                            <tr>
+                                <td>@record.DeviceName</td>
+                                <td>@record.Metric</td>
+                                <td>@record.Value @record.Unit</td>
+                                <td>
+                                    @if (record.IsAnomaly)
+                                    {
+                                        <span class="badge bg-danger">
+                                            Anomaly
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">
+                                            Normal
+                                        </span>
+                                    }
+                                </td>
+                                <td>
+                                    @record.Timestamp.ToLocalTime().ToString("HH:mm:ss")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Sensor> sensors = new();
+    private List<TelemetryRecord> recentTelemetry = new();
+
+    private DeviceRegistryStatus registryStatus = new();
+    private CommandDashboard commands = new();
+
+    private string searchText = string.Empty;
+    private string categoryFilter = "All";
+    private string statusFilter = "All";
+
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    private bool isBusy;
+
+    private CancellationTokenSource? refreshCancellation;
+    private Task? refreshTask;
+
+    // Filter sensors based on the selected search options
+    private List<Sensor> FilteredSensors =>
+        sensors.Where(sensor =>
+        {
+            bool matchesSearch =
+                string.IsNullOrWhiteSpace(searchText) ||
+                sensor.DeviceName.Contains(
+                    searchText, StringComparison.OrdinalIgnoreCase) ||
+                sensor.MacAddress.Contains(
+                    searchText, StringComparison.OrdinalIgnoreCase) ||
+                sensor.DeploymentLocation.Contains(
+                    searchText, StringComparison.OrdinalIgnoreCase);
+
+            bool matchesCategory =
+                categoryFilter == "All" ||
+                sensor.Category.ToString() == categoryFilter;
+
+            bool matchesStatus =
+                statusFilter == "All" ||
+                (statusFilter == "Online" && sensor.IsOnline) ||
+                (statusFilter == "Offline" && !sensor.IsOnline);
+
+            return matchesSearch && matchesCategory && matchesStatus;
+        }).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshData();
+
+        refreshCancellation = new CancellationTokenSource();
+        refreshTask = RefreshLoop(refreshCancellation.Token);
+    }
+
+    // Update the dashboard every four seconds
+    private async Task RefreshLoop(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(4));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (!isBusy)
+                    {
+                        await RefreshData(
+                            showErrors: false,
+                            cancellationToken);
+                    }
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Stop refreshing when the page is closed
+        }
+    }
+
+    // Load the latest data from the API
+    private async Task RefreshData(
+        bool showErrors = true,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            sensors = await Http.GetFromJsonAsync<List<Sensor>>(
+                "api/sensors",
+                cancellationToken) ?? new();
+
+            registryStatus =
+                await Http.GetFromJsonAsync<DeviceRegistryStatus>(
+                    "api/sensors/status",
+                    cancellationToken) ?? new();
+
+            commands = await Http.GetFromJsonAsync<CommandDashboard>(
+                "api/commands",
+                cancellationToken) ?? new();
+
+            recentTelemetry =
+                await Http.GetFromJsonAsync<List<TelemetryRecord>>(
+                    "api/telemetry/recent",
+                    cancellationToken) ?? new();
+
+            if (showErrors)
+            {
+                errorMessage = string.Empty;
+            }
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            if (showErrors)
+            {
+                errorMessage = "Could not load the latest device data.";
+            }
+        }
+    }
+
+    private string GetActuatorState(int sensorId)
+    {
+        ActuatorState? actuator = commands.Actuators
+            .FirstOrDefault(item => item.SensorId == sensorId);
+
+        return actuator?.IsOn == true ? "On" : "Off";
+    }
+
+    private static string FormatState(bool isOn)
+    {
+        return isOn ? "On" : "Off";
+    }
+
+    // Update a sensor's connection state
+    private async Task ChangeConnection(Sensor sensor)
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var request = new SensorConnectionRequest
+            {
+                IsOnline = !sensor.IsOnline
+            };
+
+            var response = await Http.PutAsJsonAsync(
+                $"api/sensors/{sensor.Id}/connection",
+                request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = request.IsOnline
+                    ? "Sensor reconnected successfully."
+                    : "Sensor disconnected.";
+
+                await RefreshData();
+            }
+            else
+            {
+                errorMessage = "Could not update the sensor status.";
+            }
+        }
+        catch
+        {
+            errorMessage = "The API could not be reached.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    // Send a manual command to a device
+    private async Task SendCommand(int sensorId, bool turnOn)
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var request = new DeviceCommandRequest
+            {
+                SensorId = sensorId,
+                TurnOn = turnOn
+            };
+
+            var response = await Http.PostAsJsonAsync(
+                "api/commands",
+                request);
+
+            CommandOperationResult? result =
+                await response.Content
+                    .ReadFromJsonAsync<CommandOperationResult>();
+
+            if (response.IsSuccessStatusCode && result != null)
+            {
+                successMessage = result.Message;
+                commands = result.Dashboard;
+
+                await RefreshData();
+            }
+            else
+            {
+                errorMessage = result?.Message ??
+                    "Could not complete the command.";
+            }
+        }
+        catch
+        {
+            errorMessage = "Could not send the command.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    // Undo the last manual command
+    private async Task UndoLastCommand()
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var response = await Http.PostAsync(
+                "api/commands/undo",
+                null);
+
+            CommandOperationResult? result =
+                await response.Content
+                    .ReadFromJsonAsync<CommandOperationResult>();
+
+            if (response.IsSuccessStatusCode && result != null)
+            {
+                successMessage = result.Message;
+                commands = result.Dashboard;
+
+                await RefreshData();
+            }
+            else
+            {
+                errorMessage = result?.Message ??
+                    "Could not undo the command.";
+            }
+        }
+        catch
+        {
+            errorMessage = "Could not contact the command service.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    // Generate sensor readings through the API
+    private async Task SimulateTelemetry()
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var response = await Http.PostAsync(
+                "api/telemetry/simulate",
+                null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = "New telemetry readings generated.";
+                await RefreshData();
+            }
+            else
+            {
+                errorMessage = "Telemetry simulation failed.";
+            }
+        }
+        catch
+        {
+            errorMessage = "Could not connect to the telemetry API.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (refreshCancellation == null)
+        {
+            return;
+        }
+
+        refreshCancellation.Cancel();
+
+        if (refreshTask != null)
+        {
+            try
+            {
+                await refreshTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        refreshCancellation.Dispose();
+    }
+}

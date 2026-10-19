@@ -7,12 +7,14 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddDataProtection();
 
-// Register services used by the API
+// Register services used by the application
 builder.Services.AddSingleton<TelemetryService>();
 builder.Services.AddSingleton<DeploymentService>();
 builder.Services.AddSingleton<AttachmentService>();
 builder.Services.AddSingleton<RecommendationService>();
 builder.Services.AddSingleton<AlertRoutingService>();
+builder.Services.AddSingleton<SensorRegistryService>();
+builder.Services.AddSingleton<DeviceCommandService>();
 
 builder.Services.AddCors(options =>
 {

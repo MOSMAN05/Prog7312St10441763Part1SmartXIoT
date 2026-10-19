@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿
+using Microsoft.AspNetCore.Mvc;
+using SmartX.Api.Services;
 using SmartX.Shared;
 
 namespace SmartX.Api.Controllers;
@@ -7,82 +9,110 @@ namespace SmartX.Api.Controllers;
 [Route("api/[controller]")]
 public class SensorsController : ControllerBase
 {
-    private static readonly List<Sensor> sensors = new()
-    {
-        new Sensor
-        {
-            Id = 1,
-            DeviceName = "Greenhouse Temperature 01",
-            MacAddress = "A4:C1:38:22:0F:91",
-            DeploymentLocation = "Facility A - Hydroponics Bay",
-            Category = SensorCategory.Environmental,
-            IsOnline = true,
-            LastSeen = DateTime.UtcNow
-        },
-        new Sensor
-        {
-            Id = 2,
-            DeviceName = "Smart Meter 01",
-            MacAddress = "B8:27:EB:44:21:10",
-            DeploymentLocation = "Facility A - Utility Room",
-            Category = SensorCategory.PowerConsumption,
-            IsOnline = true,
-            LastSeen = DateTime.UtcNow
-        },
-        new Sensor
-        {
-            Id = 3,
-            DeviceName = "Pump Controller 01",
-            MacAddress = "C2:11:45:67:80:AB",
-            DeploymentLocation = "Facility A - Zone 2",
-            Category = SensorCategory.Actuator,
-            IsOnline = false,
-            LastSeen = DateTime.UtcNow.AddMinutes(-5)
-        }
-    };
+    private readonly SensorRegistryService registry;
+    private readonly AlertRoutingService alertService;
 
-    private static int nextId = 4;
+    public SensorsController(
+        SensorRegistryService registry,
+        AlertRoutingService alertService)
+    {
+        this.registry = registry;
+        this.alertService = alertService;
+    }
 
     [HttpGet]
     public ActionResult<List<Sensor>> GetSensors()
     {
-        return Ok(sensors);
+        return Ok(registry.GetAll());
     }
 
     [HttpGet("{id:int}")]
     public ActionResult<Sensor> GetSensor(int id)
     {
-        var sensor = sensors.FirstOrDefault(s => s.Id == id);
+        Sensor? sensor = registry.GetById(id);
 
-        if (sensor == null)
-        {
-            return NotFound();
-        }
+        return sensor == null ? NotFound() : Ok(sensor);
+    }
 
-        return Ok(sensor);
+    [HttpGet("mac/{macAddress}")]
+    public ActionResult<Sensor> GetByMac(string macAddress)
+    {
+        Sensor? sensor = registry.GetByMac(macAddress);
+
+        return sensor == null ? NotFound() : Ok(sensor);
+    }
+
+    [HttpGet("status")]
+    public ActionResult<DeviceRegistryStatus> GetStatus()
+    {
+        return Ok(registry.GetStatus());
     }
 
     [HttpPost]
     public ActionResult<Sensor> RegisterSensor(Sensor sensor)
     {
-        bool macExists = sensors.Any(s =>
-            s.MacAddress.Equals(sensor.MacAddress, StringComparison.OrdinalIgnoreCase));
-
-        if (macExists)
+        if (!registry.TryRegister(sensor, out Sensor? registered))
         {
-            return Conflict("A sensor with this MAC address is already registered.");
+            return Conflict(
+                "A sensor with this MAC address is already registered.");
         }
-
-        sensor.Id = nextId++;
-        sensor.IsOnline = true;
-        sensor.LastSeen = DateTime.UtcNow;
-        sensor.DateRegistered = DateTime.UtcNow;
-
-        sensors.Add(sensor);
 
         return CreatedAtAction(
             nameof(GetSensor),
-            new { id = sensor.Id },
-            sensor);
+            new { id = registered!.Id },
+            registered);
+    }
+
+    [HttpPut("{id:int}/connection")]
+    public ActionResult<SensorConnectionResult> UpdateConnection(
+        int id,
+        [FromBody] SensorConnectionRequest request)
+    {
+        SensorConnectionResult? result = registry.SetConnection(
+            id,
+            request.IsOnline);
+
+        if (result == null)
+        {
+            return NotFound("Sensor not found.");
+        }
+
+        // Only create an alert for a new disconnection
+        if (result.NewDisconnectedAlert)
+        {
+            string location = result.Sensor.DeploymentLocation;
+            string sourceNode = "Gateway";
+
+            if (location.Contains(
+                "Hydroponics",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                sourceNode = "Hydroponics Bay";
+            }
+            else if (location.Contains(
+                "Utility",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                sourceNode = "Utility Room";
+            }
+            else if (location.Contains(
+                "Zone 2",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                sourceNode = "Zone 2";
+            }
+
+            alertService.SubmitAlert(
+                new AlertRequest
+                {
+                    SensorId = id,
+                    SourceNode = sourceNode,
+                    Severity = "High",
+                    Message = $"{result.Sensor.DeviceName} disconnected"
+                },
+                dispatchCritical: false);
+        }
+
+        return Ok(result);
     }
 }
