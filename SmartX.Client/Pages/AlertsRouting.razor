@@ -1,0 +1,484 @@
+﻿@page "/alerts"
+@using System.Net.Http.Json
+@using SmartX.Shared
+@inject HttpClient Http
+
+<PageTitle>Priority Alerts - Smart-X</PageTitle>
+
+<h1>Priority Alerts and Network Routing</h1>
+
+<p class="text-muted">
+    Manage incoming alerts and find the shortest network route.
+</p>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">
+        @errorMessage
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success">
+        @successMessage
+    </div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Pending Alerts</h6>
+                <h2>@dashboard.PendingCount</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Critical Alerts Waiting</h6>
+                <h2 class="text-danger">
+                    @dashboard.CriticalPendingCount
+                </h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Processed Alerts</h6>
+                <h2 class="text-success">
+                    @dashboard.DispatchedCount
+                </h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Simulate Device Alert</h4>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Sensor ID</label>
+
+                <input class="form-control"
+                       type="number"
+                       min="1"
+                       @bind="sensorId" />
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Network Location</label>
+
+                <select class="form-select"
+                        @bind="sourceNode">
+
+                    @foreach (string node in network.Nodes)
+                    {
+                        <option value="@node">@node</option>
+                    }
+
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Alert Severity</label>
+
+                <select class="form-select"
+                        @bind="severity">
+                    <option value="Normal">Normal</option>
+                    <option value="High">High</option>
+                    <option value="Critical">Critical</option>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Alert Message</label>
+
+                <input class="form-control"
+                       @bind="message"
+                       placeholder="Temperature exceeded the safe limit" />
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <button class="btn btn-primary"
+                    disabled="@isBusy"
+                    @onclick="QueueAlert">
+                Add to Queue
+            </button>
+
+            <button class="btn btn-danger"
+                    disabled="@(isBusy || severity != "Critical")"
+                    @onclick="SendCriticalAlert">
+                Send Critical Alert Now
+            </button>
+
+            <button class="btn btn-outline-secondary"
+                    disabled="@isBusy"
+                    @onclick="LoadDashboard">
+                Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between gap-2">
+            <h4>Priority Queue</h4>
+
+            <button class="btn btn-success"
+                    disabled="@(isBusy || dashboard.PendingCount == 0)"
+                    @onclick="DispatchNextAlert">
+                Dispatch Next Alert
+            </button>
+        </div>
+
+        @if (dashboard.PendingAlerts.Count == 0)
+        {
+            <p class="text-muted">
+                No alerts are currently waiting.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Priority</th>
+                            <th>Sensor</th>
+                            <th>Location</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var alert in dashboard.PendingAlerts)
+                        {
+                            <tr>
+                                <td>
+                                    @if (alert.Severity == "Critical")
+                                    {
+                                        <span class="badge bg-danger">
+                                            Critical
+                                        </span>
+                                    }
+                                    else if (alert.Severity == "High")
+                                    {
+                                        <span class="badge bg-warning text-dark">
+                                            High
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">
+                                            Normal
+                                        </span>
+                                    }
+                                </td>
+
+                                <td>@alert.SensorId</td>
+                                <td>@alert.SourceNode</td>
+                                <td>@alert.Message</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Shortest Path Routing</h4>
+
+        <p class="text-muted">
+            Calculate the fastest simulated network route
+            to the Smart-X dashboard.
+        </p>
+
+        <button class="btn btn-outline-primary mb-3"
+                disabled="@isBusy"
+                @onclick="PreviewRoute">
+            Find Shortest Route
+        </button>
+
+        @if (routePreview.IsReachable)
+        {
+            <div class="alert alert-info">
+                <h5>Recommended Network Route</h5>
+
+                <p>
+                    @string.Join(" → ", routePreview.Path)
+                </p>
+
+                <strong>
+                    Total simulated latency:
+                    @routePreview.TotalLatencyMs ms
+                </strong>
+            </div>
+        }
+        else
+        {
+            <p class="text-muted">
+                Select a node to calculate its route.
+                @routePreview.Status
+            </p>
+        }
+
+        <h5>Network Connections</h5>
+
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Latency (ms)</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var connection in network.Connections)
+                    {
+                        <tr>
+                            <td>@connection.FromNode</td>
+                            <td>@connection.ToNode</td>
+                            <td>@connection.LatencyMs</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h4>Alert Dispatch History</h4>
+
+        @if (dashboard.RecentDispatches.Count == 0)
+        {
+            <p class="text-muted">
+                No alerts have been dispatched yet.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Severity</th>
+                            <th>Message</th>
+                            <th>Route</th>
+                            <th>Latency</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var item in dashboard.RecentDispatches)
+                        {
+                            <tr>
+                                <td>@item.Alert.Severity</td>
+
+                                <td>@item.Alert.Message</td>
+
+                                <td>
+                                    @string.Join(" → ", item.Route.Path)
+                                </td>
+
+                                <td>
+                                    @if (item.Route.TotalLatencyMs.HasValue)
+                                    {
+                                        @($"{item.Route.TotalLatencyMs} ms")
+                                    }
+                                    else
+                                    {
+                                        <span>N/A</span>
+                                    }
+                                </td>
+
+                                <td>@item.Route.Status</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private AlertDashboardState dashboard = new();
+    private NetworkOverview network = new();
+    private AlertRouteResult routePreview = new();
+
+    private int sensorId = 1;
+    private string sourceNode = "Hydroponics Bay";
+    private string severity = "Normal";
+    private string message = "Temperature reading outside safe range";
+
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    private bool isBusy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboard();
+    }
+
+    // Load alerts and network information
+    private async Task LoadDashboard()
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            network = await Http.GetFromJsonAsync<NetworkOverview>(
+                "api/alerts/network") ?? new();
+
+            dashboard = await Http.GetFromJsonAsync<AlertDashboardState>(
+                "api/alerts") ?? new();
+        }
+        catch
+        {
+            errorMessage = "Could not load alert information.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task QueueAlert()
+    {
+        await SubmitAlert(false);
+    }
+
+    private async Task SendCriticalAlert()
+    {
+        await SubmitAlert(true);
+    }
+
+    // Send an alert through the API
+    private async Task SubmitAlert(bool dispatchCritical)
+    {
+        if (sensorId <= 0 || string.IsNullOrWhiteSpace(message))
+        {
+            errorMessage = "Enter a valid sensor ID and alert message.";
+            return;
+        }
+
+        isBusy = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var request = new AlertRequest
+            {
+                SensorId = sensorId,
+                SourceNode = sourceNode,
+                Severity = severity,
+                Message = message
+            };
+
+            string url =
+                $"api/alerts?dispatchCritical={dispatchCritical.ToString().ToLowerInvariant()}";
+
+            var response = await Http.PostAsJsonAsync(url, request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                dashboard = await response.Content
+                    .ReadFromJsonAsync<AlertDashboardState>() ?? new();
+
+                successMessage = dispatchCritical
+                    ? "Critical alert dispatched."
+                    : "Alert added to the priority queue.";
+            }
+            else
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+            }
+        }
+        catch
+        {
+            errorMessage = "Could not send the alert to the API.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    // Send the highest-priority waiting alert
+    private async Task DispatchNextAlert()
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var response = await Http.PostAsync(
+                "api/alerts/dispatch?count=1",
+                null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                dashboard = await response.Content
+                    .ReadFromJsonAsync<AlertDashboardState>() ?? new();
+
+                successMessage = "The next alert has been processed.";
+            }
+            else
+            {
+                errorMessage = "Could not dispatch the alert.";
+            }
+        }
+        catch
+        {
+            errorMessage = "Could not connect to the API.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    // Find the shortest route for the selected node
+    private async Task PreviewRoute()
+    {
+        isBusy = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            string node = Uri.EscapeDataString(sourceNode);
+
+            routePreview = await Http.GetFromJsonAsync<AlertRouteResult>(
+                $"api/alerts/route?sourceNode={node}") ?? new();
+        }
+        catch
+        {
+            errorMessage = "Could not calculate the network route.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

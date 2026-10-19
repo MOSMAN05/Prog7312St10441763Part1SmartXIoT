@@ -10,10 +10,14 @@ namespace SmartX.Api.Controllers;
 public class TelemetryController : ControllerBase
 {
     private readonly TelemetryService telemetryService;
+    private readonly AlertRoutingService alertService;
 
-    public TelemetryController(TelemetryService telemetryService)
+    public TelemetryController(
+        TelemetryService telemetryService,
+        AlertRoutingService alertService)
     {
         this.telemetryService = telemetryService;
+        this.alertService = alertService;
     }
 
     // Get recent sensor readings
@@ -41,35 +45,57 @@ public class TelemetryController : ControllerBase
     [HttpPost("simulate")]
     public ActionResult<TelemetrySummary> SimulateTelemetry()
     {
-        return Ok(telemetryService.GenerateBatch());
+        TelemetrySummary summary = telemetryService.GenerateBatch();
+
+        // Check the five new simulation readings
+        SendCriticalAlerts(telemetryService.GetRecentRecords(5));
+
+        return Ok(summary);
     }
 
-    // Receive a new sensor reading
+    // Receive sensor readings through the API
     [HttpPost("ingest")]
     public ActionResult<TelemetryQueueStatus> IngestTelemetry(
         [FromBody] TelemetryEvent telemetry,
         [FromQuery] bool processImmediately = true)
     {
-        return Ok(telemetryService.Enqueue(
+        TelemetryQueueStatus status = telemetryService.Enqueue(
             telemetry,
-            processImmediately));
+            processImmediately);
+
+        if (processImmediately)
+        {
+            SendCriticalAlerts(telemetryService.GetRecentRecords(1));
+        }
+
+        return Ok(status);
     }
 
-    // Check the number of readings in the queue
+    // Get the current telemetry queue status
     [HttpGet("queue")]
     public ActionResult<TelemetryQueueStatus> GetQueueStatus()
     {
         return Ok(telemetryService.GetQueueStatus());
     }
 
-    // Process readings waiting in the queue
+    // Process buffered sensor readings
     [HttpPost("process")]
     public ActionResult<TelemetryQueueStatus> ProcessQueuedTelemetry()
     {
-        return Ok(telemetryService.ProcessPending());
+        int pendingCount = telemetryService.GetQueueStatus().PendingCount;
+
+        TelemetryQueueStatus status = telemetryService.ProcessPending();
+
+        if (pendingCount > 0)
+        {
+            SendCriticalAlerts(
+                telemetryService.GetRecentRecords(pendingCount));
+        }
+
+        return Ok(status);
     }
 
-    // Get sensor logs between two dates
+    // Get indexed telemetry logs
     [HttpGet("logs")]
     public ActionResult<List<TelemetryRecord>> GetIndexedLogs(
         [FromQuery] DateTime fromUtc,
@@ -98,5 +124,29 @@ public class TelemetryController : ControllerBase
             fromUtc,
             toUtc,
             limit));
+    }
+
+    // Create critical alerts for abnormal readings
+    private void SendCriticalAlerts(IEnumerable<TelemetryRecord> records)
+    {
+        foreach (TelemetryRecord record in records.Where(r => r.IsAnomaly))
+        {
+            string sourceNode = record.SensorId switch
+            {
+                1 => "Hydroponics Bay",
+                2 => "Utility Room",
+                3 => "Zone 2",
+                _ => "Gateway"
+            };
+
+            alertService.SubmitAlert(new AlertRequest
+            {
+                SensorId = record.SensorId,
+                SourceNode = sourceNode,
+                Severity = "Critical",
+                Message = $"{record.DeviceName}: " +
+                    $"{record.Metric} reading {record.Value} {record.Unit}"
+            });
+        }
     }
 }
