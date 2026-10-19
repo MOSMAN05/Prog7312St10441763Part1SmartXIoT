@@ -1,3 +1,4 @@
+
 using SmartX.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,9 +7,11 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddDataProtection();
 
+// Register the application services
 builder.Services.AddSingleton<TelemetryService>();
 builder.Services.AddSingleton<DeploymentService>();
 builder.Services.AddSingleton<AttachmentService>();
+builder.Services.AddSingleton<RecommendationService>();
 
 builder.Services.AddCors(options =>
 {
