@@ -147,7 +147,23 @@ This video will demonstrate our ability to process our readings and use more adv
 
 ## Use Of AI
 
-Will be supplied in another document with supporting evidence.
+I have used Chat GPT at various points during the creation of my Smart-X IoT application. This has been done on multiple accounts.  As there was a cap on how many files you can upload per account I used other accounts when I ran out.  
+
+ Throughout my development of my application I would take screenshots of my UI and ask chat gpt if it could spot any bugs or how to improve on things. When I hit the file upload limit on one account I would switch to my next account to allow me to continue developing.  
+
+ Due to me using multiple accounts and being time constrained before submitting my work. I couldn't go back through all of my conversations to pull each one out.  
+
+ I know that this may limit me from showing more of my usage. But I have created this declaration to try and give as much info as I can about my usage of AI during this assessment.  
+
+ As stated in the IIE's Guidelines for Responsible AI Use you must disclose if you have used AI while creating your work (IIE, 2025, p. 4).  
+
+ They also want you to show what you used the AI for and give conversation links or screenshots of you using the ai (IIE, 2025, p. 9).  
+
+ So below are some of the things I used Chat GPT for. Whether it be with coding, finding bugs with my UI, writing docs, testing and helping me prepare for my video.  
+
+ I am not able to show you every conversation I have but I will show you what I can and tell you what I used AI for.
+
+ PLEASE REFER TO PDF WORD DOC IN SUBMISSION ON ARC 
 
 ## Github Link
 
